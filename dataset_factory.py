@@ -40,11 +40,6 @@ CAR_RECORD_INFO = RecordDatasetInfo(train=14567, val=1618,
                                     link='http://ai.stanford.edu/~jkrause/cars/car_dataset.html',
                                     label_file='')
 
-RUBBISH_INFO = RecordDatasetInfo(train=2292, val=355, name='rubbish',
-                                 num_classes=9, shuffle_buffer_size=1000,
-                                 num_train_files=5, num_val_files=5, link='',
-                                 label_file='')
-
 TMP_INFO = {
     'train': 5743,
     'num_classes': 2
@@ -199,32 +194,6 @@ def preprocess_image_buffer(img_buffer, is_training, fine_height,
     return image
 
 
-def preprocess_rubbish_image(image, is_training, fine_height,
-                             fine_width, channels):
-    if is_training:
-        print('Read training data.')
-    else:
-        print('Read validation data.')
-    if is_training:
-        image = P.random_resized_crop(image, [224, 224])
-        image = tf.image.random_flip_left_right(image)
-        image = tf.image.random_contrast(image, lower=0.6, upper=1.4)
-        image = tf.image.random_brightness(image, max_delta=0.4)
-        image = tf.image.random_saturation(image, lower=0.6, upper=1.4)
-        image = tf.image.random_hue(image, max_delta=0.4)
-    else:
-        # image = tf.image.resize_images(image, [224, 224])
-        crop_ratio = 0.875
-        min_size = int(math.ceil(224 / crop_ratio))
-        image = P.resize_keep_aspect(image, min_size)
-        image = P.center_crop(image, 224, 224)
-
-    image.set_shape([fine_height, fine_width, channels])
-    # image = tf.image.per_image_standardization(image)
-    image = P.normalize(image, IMAGENET_CHANNEL_MEANS, IMAGENET_CHANNEL_STDS, 3, tf.float32)
-    return image
-
-
 def parse_image(filename, label, is_training, fine_height, fine_width, channels,
                 preprocess_fn, dtype=tf.float32):
     image_string = tf.read_file(filename)
@@ -355,57 +324,6 @@ def get_cars_dataset_from_record(is_training, data_dir, batch_size,
         num_epochs=num_epochs,
         num_parallel_batches=num_parallel_batches,
         dtype=dtype)
-
-
-def get_rubbish_dataset_from_record(is_training, data_dir, batch_size,
-                                    num_epochs=1,
-                                    parse_record_fn=parse_record,
-                                    preprocess_fn=preprocess_image_buffer,
-                                    fine_height=224, fine_width=224,
-                                    channels=3, dtype=tf.float32,
-                                    num_parallel_batches=1):
-    filenames = get_filenames(is_training, data_dir, RUBBISH_INFO)
-    dataset = tf.data.Dataset.from_tensor_slices(filenames)
-
-    # cycle_length files will be read and deserialized in parallel.
-    dataset = dataset.apply(contrib.data.parallel_interleave(
-        tf.data.TFRecordDataset, cycle_length=RUBBISH_INFO.num_train_files))
-
-    return process_record_dataset(
-        dataset, is_training, batch_size,
-        shuffle_buffer_size=CAR_RECORD_INFO.shuffle_buffer_size,
-        fine_height=fine_height,
-        fine_width=fine_width,
-        channels=channels,
-        parse_record_fn=parse_record_fn,
-        preprocess_fn=preprocess_fn,
-        num_epochs=num_epochs,
-        num_parallel_batches=num_parallel_batches,
-        dtype=dtype)
-
-
-def get_tmp_dataset(is_training, data_dir, batch_size, num_epochs=1,
-                    parse_fn=parse_image,
-                    preprocess_fn=preprocess_rubbish_image,
-                    fine_height=224, fine_width=224,
-                    channels=3, dtype=tf.float32,
-                    save_class_to_idx=False,
-                    save_dir=None):
-    filenames, labels = get_filenames_labels(is_training, data_dir,
-                                             save_class_to_idx=save_class_to_idx,
-                                             save_dir=save_dir)
-    dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
-
-    dataset = dataset.repeat(num_epochs)
-
-    return process_image_dataset(dataset, is_training, batch_size,
-                                 shuffle_buffer_size=TMP_INFO['train'],
-                                 fine_height=fine_height,
-                                 fine_width=fine_width,
-                                 channels=channels,
-                                 parse_fn=parse_fn,
-                                 preprocess_fn=preprocess_fn,
-                                 dtype=dtype)
 
 
 def process_image_dataset(dataset, is_training, batch_size,
